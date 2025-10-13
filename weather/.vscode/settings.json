@@ -1,0 +1,13 @@
+{
+  "anthropic.mcpServers": {
+    "weather": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "${workspaceFolder}",
+        "run",
+        "weather.py"
+      ]
+    }
+  }
+}
