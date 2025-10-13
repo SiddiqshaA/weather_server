@@ -1,0 +1,11 @@
+[project]
+name = "weather-server"
+version = "0.1.0"
+description = "Weather MCP server providing weather information tools"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.17.0",
+    "nest_asyncio>=1.5.8",
+]

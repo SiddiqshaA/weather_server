@@ -2,11 +2,22 @@
 Simple Weather MCP Server - Root Entry Point
 
 This file provides a clean and simple implementation for deployment.
+With special handling for asyncio conflicts.
 """
 from mcp.server.fastmcp import FastMCP
 import httpx
 from typing import Any
 import sys
+import os
+import asyncio
+import nest_asyncio
+
+# Apply nest_asyncio to patch the event loop and avoid the "already running" error
+try:
+    nest_asyncio.apply()
+    print("nest_asyncio patch applied successfully", file=sys.stderr)
+except Exception as e:
+    print(f"Failed to apply nest_asyncio: {e}", file=sys.stderr)
 
 # Create the MCP server
 mcp = FastMCP("weather")
@@ -116,7 +127,44 @@ print("Weather MCP Server ready with tools:", file=sys.stderr)
 for tool in mcp._tools:
     print(f"- {tool.name}", file=sys.stderr)
 
+# Custom function to run the server with asyncio error handling
+def run_mcp_server():
+    try:
+        # Reset and create a new event loop to avoid conflicts
+        try:
+            # Try to close the current event loop if it exists
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    print("Event loop already running, using nest_asyncio", file=sys.stderr)
+                else:
+                    print("Event loop exists but not running", file=sys.stderr)
+            except RuntimeError:
+                print("Creating new event loop", file=sys.stderr)
+                asyncio.set_event_loop(asyncio.new_event_loop())
+        except Exception as e:
+            print(f"Event loop handling error: {e}", file=sys.stderr)
+        
+        # Run the server with additional error reporting
+        print("Starting Weather MCP Server...", file=sys.stderr)
+        mcp.run(transport='stdio')
+    except RuntimeError as e:
+        if "already running" in str(e):
+            print(f"Asyncio error: {e}. Attempting alternative approach...", file=sys.stderr)
+            # Try an alternative approach without using the default event loop
+            try:
+                os.environ["PYTHONASYNCIODEBUG"] = "1"  # Enable asyncio debug
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                # Run in a safer way
+                mcp._run_stdio()
+            except Exception as e2:
+                print(f"Alternative approach also failed: {e2}", file=sys.stderr)
+        else:
+            print(f"Runtime error: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+
 # When executed directly, run the server
 if __name__ == "__main__":
-    print("Starting Weather MCP Server...", file=sys.stderr)
-    mcp.run(transport='stdio')
+    run_mcp_server()
