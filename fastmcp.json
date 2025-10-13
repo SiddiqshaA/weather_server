@@ -1,0 +1,5 @@
+{
+    "name": "weather-server",
+    "entrypoint": "weather.py:mcp",
+    "description": "Weather MCP server providing weather tools"
+}

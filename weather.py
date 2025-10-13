@@ -10,8 +10,11 @@ import traceback
 
 try:
     sys.stderr.write("[ROOT] Initializing MCP server...\n")
+    sys.stderr.write(f"[ROOT] Python version: {sys.version}\n")
+    sys.stderr.write(f"[ROOT] Current directory: {os.getcwd()}\n")
     
     # Import FastMCP and create the server instance
+    sys.stderr.write("[ROOT] Importing FastMCP...\n")
     from mcp.server.fastmcp import FastMCP
     
     # Create the server with the name "weather" - this is the expected variable name
@@ -180,10 +183,38 @@ O₃: {aq.get('ozone', 'N/A')} μg/m³
     # The mcp object is now available for the FastMCP deployment
     sys.stderr.write("[ROOT] MCP server initialized successfully with all tools registered.\n")
     
+    # Define a custom run function to avoid the asyncio conflict
+    def run_mcp_server():
+        """Run the MCP server with special handling for asyncio conflicts"""
+        import multiprocessing
+        import time
+        
+        # Create a separate process to handle the MCP server
+        def worker_process():
+            try:
+                sys.stderr.write("[WORKER] Starting MCP server in separate process\n")
+                mcp.run(transport='stdio')
+            except Exception as e:
+                sys.stderr.write(f"[WORKER] Error: {str(e)}\n")
+                sys.exit(1)
+        
+        # Start as a separate process to avoid asyncio conflicts
+        p = multiprocessing.Process(target=worker_process)
+        p.daemon = True  # Allow the process to be terminated when parent exits
+        p.start()
+        
+        # Wait for the process to finish
+        sys.stderr.write(f"[ROOT] MCP server process started with PID {p.pid}\n")
+        p.join()
+        
+        if p.exitcode != 0:
+            sys.stderr.write(f"[ROOT] MCP server process exited with code {p.exitcode}\n")
+            sys.exit(p.exitcode)
+    
     # This only runs when the file is executed directly
     if __name__ == "__main__":
         sys.stderr.write("[ROOT] Running MCP server directly...\n")
-        mcp.run(transport='stdio')
+        run_mcp_server()
         
 except Exception as e:
     sys.stderr.write(f"[ROOT] ERROR: {str(e)}\n")
