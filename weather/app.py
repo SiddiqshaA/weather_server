@@ -1,18 +1,14 @@
 """
-Weather MCP Server - Cloud Deployment Version
+Weather MCP Server - Production Version
 
-This file is meant to be used as the entry point for cloud deployment.
+This file is meant to be used in the production/deployment environment.
+It contains all the necessary code in a single file.
 """
 import sys
 import os
 from typing import Any
 import httpx
 from mcp.server.fastmcp import FastMCP
-
-# Print diagnostics for cloud environment
-sys.stderr.write(f"[Weather MCP] Starting server in: {os.getcwd()}\n")
-sys.stderr.write(f"[Weather MCP] Python path: {sys.executable}\n")
-sys.stderr.write(f"[Weather MCP] Files available: {os.listdir('.')}\n")
 
 # Initialize FastMCP server
 mcp = FastMCP("weather")
@@ -38,7 +34,7 @@ async def make_request(url: str, params: dict | None = None) -> dict[str, Any] |
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            print(f"[ERROR] {url} -> {e}")
+            print(f"[ERROR] {url} -> {e}", file=sys.stderr)
             return None
 
 
@@ -72,7 +68,7 @@ async def get_weather_by_city(city: str) -> str:
     current = weather_data["current"]
     return f"""
 Current Weather in {city.title()}:
-Temperature: {current.get('temperature_2m', 'N/A')}°C
+Temperature: {current.get('temperature_2m', 'N/A')} C
 Wind Speed: {current.get('wind_speed_10m', 'N/A')} m/s
 Precipitation: {current.get('precipitation', 'N/A')} mm
 """
@@ -84,29 +80,34 @@ async def get_alerts_by_type(state: str, event_type: str) -> str:
     Get weather alerts of a specific type for a US state.
 
     Args:
-        state: Two-letter US state code (e.g. 'CA', 'TX')
-        event_type: Type of event (e.g. 'Flood', 'Storm', 'Heat')
+        state: Two-letter US state code (e.g. CA, NY)
+        event_type: Type of alert (e.g. Flood, Tornado, Snow)
     """
-    url = f"{NWS_API_BASE}/alerts/active/area/{state.upper()}"
+    url = f"{NWS_API_BASE}/alerts/active/area/{state}"
     data = await make_request(url)
 
     if not data or "features" not in data:
         return f"Unable to fetch alerts for {state}."
 
-    filtered = [
-        f"""
-Event: {f['properties'].get('event', 'Unknown')}
-Area: {f['properties'].get('areaDesc', 'Unknown')}
-Severity: {f['properties'].get('severity', 'Unknown')}
-Description: {f['properties'].get('description', 'No description available')}
-Instructions: {f['properties'].get('instruction', 'No specific instructions provided')}
+    # Filter alerts by type if specified
+    features = data["features"]
+    event_type_lower = event_type.lower()
+    filtered = []
+
+    for feature in features:
+        props = feature["properties"]
+        event = props.get("event", "")
+        if event_type_lower in event.lower():
+            alert = f"""
+Event: {event}
+Area: {props.get('areaDesc', 'Unknown')}
+Severity: {props.get('severity', 'Unknown')}
+Description: {props.get('description', 'No description available')[:300]}...
 """
-        for f in data["features"]
-        if event_type.lower() in f["properties"].get("event", "").lower()
-    ]
+            filtered.append(alert)
 
     if not filtered:
-        return f"No active {event_type} alerts for {state.upper()}."
+        return f"No active {event_type} alerts for {state}."
 
     return "\n---\n".join(filtered)
 
@@ -114,7 +115,7 @@ Instructions: {f['properties'].get('instruction', 'No specific instructions prov
 @mcp.tool()
 async def get_precipitation_chance(latitude: float, longitude: float) -> str:
     """
-    Get precipitation probability for the next 3 days.
+    Get precipitation forecast for a location.
 
     Args:
         latitude: Latitude of the location
@@ -123,20 +124,20 @@ async def get_precipitation_chance(latitude: float, longitude: float) -> str:
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "daily": "precipitation_probability_max",
-        "forecast_days": 3,
-        "timezone": "auto",
+        "daily": ["precipitation_probability_max"],
+        "forecast_days": 7
     }
     data = await make_request(OPEN_METEO_BASE, params)
 
     if not data or "daily" not in data:
-        return "Unable to fetch precipitation data."
+        return "Unable to fetch precipitation forecast."
 
-    days = data["daily"]
-    response = []
-    for i, date in enumerate(days["time"]):
-        chance = days["precipitation_probability_max"][i]
-        response.append(f"{date}: {chance}% chance of precipitation")
+    daily = data["daily"]
+    response = ["Precipitation Forecast:"]
+
+    for i, day in enumerate(daily.get("time", [])):
+        prob = daily.get("precipitation_probability_max", [])[i]
+        response.append(f"{day}: {prob}% chance of precipitation")
 
     return "\n".join(response)
 
@@ -144,11 +145,11 @@ async def get_precipitation_chance(latitude: float, longitude: float) -> str:
 @mcp.tool()
 async def get_air_quality(latitude: float, longitude: float) -> str:
     """
-    Get current air quality data for a given location.
+    Get current air quality data for a location.
 
     Args:
-        latitude: Latitude
-        longitude: Longitude
+        latitude: Latitude of the location
+        longitude: Longitude of the location
     """
     params = {
         "latitude": latitude,
@@ -163,11 +164,11 @@ async def get_air_quality(latitude: float, longitude: float) -> str:
     aq = data["current"]
     return f"""
 Air Quality Data:
-PM2.5: {aq.get('pm2_5', 'N/A')} µg/m³
-PM10: {aq.get('pm10', 'N/A')} µg/m³
-CO: {aq.get('carbon_monoxide', 'N/A')} µg/m³
-NO₂: {aq.get('nitrogen_dioxide', 'N/A')} µg/m³
-O₃: {aq.get('ozone', 'N/A')} µg/m³
+PM2.5: {aq.get('pm2_5', 'N/A')} μg/m³
+PM10: {aq.get('pm10', 'N/A')} μg/m³
+CO: {aq.get('carbon_monoxide', 'N/A')} μg/m³
+NO₂: {aq.get('nitrogen_dioxide', 'N/A')} μg/m³
+O₃: {aq.get('ozone', 'N/A')} μg/m³
 """
 
 
@@ -175,17 +176,23 @@ O₃: {aq.get('ozone', 'N/A')} µg/m³
 
 def main():
     """Entry point for the MCP server."""
-    sys.stderr.write("[MCP Weather] Server starting... Listening on stdio\n")
+    # Force Python to print errors to stderr, which will be picked up by the cloud logs
+    import traceback
+    sys.stderr.write("[Weather MCP] Server starting...\n")
     
     try:
-        # In cloud deployment, we want to directly run the MCP server
-        # This avoids any issues with file paths or subprocess management
-        sys.stderr.write("[MCP Weather] Running MCP server directly\n")
+        # Print the current directory and files for debugging
+        cwd = os.getcwd()
+        sys.stderr.write(f"[Weather MCP] Current directory: {cwd}\n")
+        if os.path.exists(cwd):
+            files = os.listdir(cwd)
+            sys.stderr.write(f"[Weather MCP] Files in directory: {', '.join(files)}\n")
+        
+        # Run the MCP server directly - we know this is a fresh environment
         mcp.run(transport='stdio')
     
     except Exception as e:
-        sys.stderr.write(f"[ERROR] Server failed to start: {str(e)}\n")
-        import traceback
+        sys.stderr.write(f"[Weather MCP] ERROR: {str(e)}\n")
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
