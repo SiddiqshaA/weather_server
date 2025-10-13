@@ -1,12 +1,9 @@
 {
   "mcpServers": {
     "weather": {
-      "command": "uv",
+      "command": "python",
       "args": [
-        "--directory",
-        "D:\\Crayon'd Internship\\MCP\\weathermcp\\weather",
-        "run",
-        "weather.py"
+        "D:\\Crayon'd Internship\\MCP\\weathermcp\\weather\\run_mcp.py"
       ]
     }
   }
